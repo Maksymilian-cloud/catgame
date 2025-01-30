@@ -29,9 +29,23 @@ function love.load()
 
     -- Ball speed increase multiplier
     speedMultiplier = 1.0
+
+    -- Golden ball tracking
+    isGolden = false
+    goldenTimer = 0
+    goldenDuration = 3 -- seconds
+    goldenChance = 0.2 -- 20% chance to turn golden after a bounce
 end
 
 function love.update(dt)
+    -- Update golden ball timer
+    if isGolden then
+        goldenTimer = goldenTimer - dt
+        if goldenTimer <= 0 then
+            isGolden = false
+        end
+    end
+
     -- Ball movement
     ball.x = ball.x + ball.speedX * dt * speedMultiplier
     ball.y = ball.y + ball.speedY * dt * speedMultiplier
@@ -65,7 +79,21 @@ function love.update(dt)
         
         -- Increase speed slightly and update score
         speedMultiplier = speedMultiplier * 1.0001
-        score = score + 1
+
+        -- Check for golden ball (20% chance)
+        if math.random() < goldenChance then
+            isGolden = true
+            goldenTimer = goldenDuration
+        end
+
+        -- Update score with golden ball multiplier if active
+        if isGolden then
+            score = score + 2 -- Double score when golden
+        else
+            score = score + 1
+        end
+
+        -- Update best score if necessary
         if score > bestScore then
             bestScore = score
             saveBestScore(bestScore)
@@ -86,10 +114,21 @@ function love.draw()
     love.graphics.draw(pawImage, rightPaw.x, rightPaw.y, 0, 0.5, 0.5) -- Draw right paw (50% smaller)
     love.graphics.circle("fill", ball.x, ball.y, ball.radius) -- Draw ball
 
+    -- If the ball is golden, show a golden effect (optional)
+    if isGolden then
+        love.graphics.setColor(1, 0.84, 0) -- Gold color
+        love.graphics.circle("fill", ball.x, ball.y, ball.radius)
+        love.graphics.setColor(1, 1, 1) -- Reset color to white
+    end
+
     -- Draw score
-    love.graphics.setColor(1, 1, 1) -- Reset color to white
     love.graphics.print("Score: " .. score, 10, 10)
     love.graphics.print("Best Score: " .. bestScore, 10, 30)
+
+    -- Show golden ball status
+    if isGolden then
+        love.graphics.print("Golden Ball Active!", 10, 50)
+    end
 end
 
 -- Collision detection

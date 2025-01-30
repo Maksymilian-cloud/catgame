@@ -1,29 +1,15 @@
 local love = require("love")
-local json = require("json") -- Assuming a JSON library is available
 
 -- Game states
 local GameState = {
-    MAIN_MENU = "main_menu",
     PLAYING = "playing",
     PAUSED = "paused",
     GAME_OVER = "game_over",
     UPGRADE_MENU = "upgrade_menu"
 }
 
-local font
-
 function love.load()
     love.window.setTitle("Cat Paw Ball Game")
-
-    -- Initialize font
-    font = love.graphics.newFont(14)
-    love.graphics.setFont(font)
-
-    -- Initialize default values for score, bestScore, money, and speedMultiplier
-    score = 0
-    bestScore = 0
-    money = 0
-    speedMultiplier = 1  -- Default value for speedMultiplier
 
     -- Load assets
     background = love.graphics.newImage("assets/background.jpg")
@@ -35,35 +21,37 @@ function love.load()
     bgScaleY = screenHeight / background:getHeight()
 
     -- Initialize game state
-    gameState = GameState.MAIN_MENU
+    gameState = GameState.PLAYING
+    
+    -- Ball properties
+    ball = { x = screenWidth / 2, y = screenHeight / 3, radius = 15, speedX = 200, speedY = 200 }
 
-    -- Load saved game data
-    loadGameData()
-
-    -- Ball properties (ensure it's initialized with default values)
-    ball = ball or { 
-        x = screenWidth / 2, 
-        y = screenHeight / 3, 
-        radius = 15,  -- Set default radius here
-        speedX = 200, 
-        speedY = 200 
-    }
-
-    -- Paw properties (ensure paw objects are initialized)
+    -- Paw properties
     pawWidth = pawImage:getWidth() * 0.5
     pawHeight = pawImage:getHeight() * 0.5
-    leftPaw = leftPaw or { x = screenWidth / 4 - pawWidth / 2, y = screenHeight - 100, width = pawWidth, height = pawHeight }
-    rightPaw = rightPaw or { x = 3 * screenWidth / 4 - pawWidth / 2, y = screenHeight - 100, width = pawWidth, height = pawHeight }
+    leftPaw = { x = screenWidth / 4 - pawWidth / 2, y = screenHeight - 100, width = pawWidth, height = pawHeight }
+    rightPaw = { x = 3 * screenWidth / 4 - pawWidth / 2, y = screenHeight - 100, width = pawWidth, height = pawHeight }
+
+    -- Score and currency
+    score = 0
+    money = loadMoney()
+    bestScore = loadBestScore()
+
+    -- Ball modifiers
+    speedMultiplier = 1.0
+    isGolden = false
+    goldenTimer = 0
+    goldenDuration = 10
+    goldenChance = 0.05 -- 5% base chance
 
     -- Load upgrades with balanced initial costs
-    upgrades = upgrades or {
-        goldenChance = { level = 0, cost = 25, maxLevel = 10, increment = 15 },
-        ballSpeed = { level = 0, cost = 20, maxLevel = 10, increment = 10 },
-        pawSpeed = { level = 0, cost = 30, maxLevel = 10, increment = 20 },
-        moneyMultiplier = { level = 0, cost = 50, maxLevel = 5, increment = 40 }
+    upgrades = loadUpgrades() or {
+        goldenChance = { level = 0, cost = 25, maxLevel = 10, increment = 15 },  -- Starts cheap, +15 per level
+        ballSpeed = { level = 0, cost = 20, maxLevel = 10, increment = 10 },     -- Easiest to get, +10 per level
+        pawSpeed = { level = 0, cost = 30, maxLevel = 10, increment = 20 },      -- Medium price, +20 per level
+        moneyMultiplier = { level = 0, cost = 50, maxLevel = 5, increment = 40 } -- Most expensive, +40 per level
     }
 end
-
 
 function love.update(dt)
     if gameState == GameState.PLAYING then
@@ -126,7 +114,7 @@ function updateGame(dt)
 
         -- Calculate money earned with multiplier
         local baseAmount = isGolden and 4 or 2
-        local moneyMultiplier = 1 + (upgrades.moneyMultiplier.level * 0.5)
+        local moneyMultiplier = 1 + (upgrades.moneyMultiplier.level * 0.5) -- +50% per level
         local earnedMoney = math.floor(baseAmount * moneyMultiplier)
         
         money = money + earnedMoney
@@ -134,15 +122,17 @@ function updateGame(dt)
 
         if score > bestScore then
             bestScore = score
-            saveGameData()
+            saveBestScore(bestScore)
         end
-        saveGameData()
+        saveMoney(money)
     end
 
     -- Game over condition
     if ball.y > screenHeight then
         gameState = GameState.GAME_OVER
-        saveGameData()
+        saveBestScore(bestScore)
+        saveMoney(money)
+        saveUpgrades(upgrades)
     end
 end
 
@@ -161,8 +151,6 @@ function love.keypressed(key)
         end
     elseif key == "return" and gameState == GameState.GAME_OVER then
         love.load()
-        gameState = GameState.PLAYING
-    elseif key == "return" and gameState == GameState.MAIN_MENU then
         gameState = GameState.PLAYING
     end
 end
@@ -192,16 +180,7 @@ function love.draw()
         drawGameOverScreen()
     elseif gameState == GameState.UPGRADE_MENU then
         drawUpgradeMenu()
-    elseif gameState == GameState.MAIN_MENU then
-        drawMainMenu()
     end
-end
-
-function drawMainMenu()
-    love.graphics.setColor(0, 0, 0, 0.7)
-    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.printf("Cat Paw Ball Game\nPress Enter to Start\nPress ESC to Quit", 0, screenHeight / 2 - 40, screenWidth, "center")
 end
 
 function drawUI()
@@ -217,66 +196,147 @@ function drawUI()
     end
 end
 
--- Function to handle collisions
-function checkCollision(ball, paw)
-    return ball.x + ball.radius > paw.x and ball.x - ball.radius < paw.x + paw.width and
-           ball.y + ball.radius > paw.y and ball.y - ball.radius < paw.y + paw.height
-end
-
 function drawPauseScreen()
-    love.graphics.setColor(0, 0, 0, 0.5)
-    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.printf("Game Paused\nPress ESC to Resume", 0, screenHeight / 2 - 40, screenWidth, "center")
-end
-
-function drawGameOverScreen()
-    love.graphics.setColor(0, 0, 0, 0.5)
-    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.printf("Game Over\nPress Enter to Restart", 0, screenHeight / 2 - 40, screenWidth, "center")
-end
-
-function drawUpgradeMenu()
     love.graphics.setColor(0, 0, 0, 0.7)
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
     love.graphics.setColor(1, 1, 1)
-    love.graphics.printf("Upgrade Menu\nPress ESC to Go Back", 0, screenHeight / 2 - 80, screenWidth, "center")
-    -- Drawing upgrades
-    local yPosition = screenHeight / 2
-    for upgrade, data in pairs(upgrades) do
-        love.graphics.print(upgrade .. " Level: " .. data.level .. " Cost: $" .. data.cost, 10, yPosition)
-        yPosition = yPosition + 20
+    love.graphics.printf("GAME PAUSED\nPress ESC to resume\nPress U for upgrades", 0, screenHeight/2 - 40, screenWidth, "center")
+end
+
+function drawGameOverScreen()
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf("GAME OVER\nFinal Score: " .. score .. "\nBest Score: " .. bestScore .. "\nPress ENTER to restart", 0, screenHeight/2 - 60, screenWidth, "center")
+end
+
+function drawUpgradeMenu()
+    love.graphics.setColor(0, 0, 0, 0.8)
+    love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+    love.graphics.setColor(1, 1, 1)
+    
+    local menuWidth = 400
+    local menuX = (screenWidth - menuWidth) / 2
+    local startY = 100
+    
+    love.graphics.printf("UPGRADES (Press U to return)", 0, startY, screenWidth, "center")
+    love.graphics.printf("Current Money: $" .. money, 0, startY + 40, screenWidth, "center")
+    
+    -- Draw upgrade options with detailed information
+    drawUpgradeOption("Golden Ball Chance", upgrades.goldenChance, startY + 100, "+5% chance", "Next level: " .. (0.05 + upgrades.goldenChance.level * 0.05) * 100 .. "%")
+    drawUpgradeOption("Ball Speed Reduction", upgrades.ballSpeed, startY + 160, "-1% speed", "Current reduction: " .. (upgrades.ballSpeed.level) .. "%")
+    drawUpgradeOption("Paw Speed", upgrades.pawSpeed, startY + 220, "+1% speed", "Current boost: +" .. (upgrades.pawSpeed.level) .. "%")
+    drawUpgradeOption("Money Multiplier", upgrades.moneyMultiplier, startY + 280, "+50% money", "Current: x" .. string.format("%.1f", (1 + upgrades.moneyMultiplier.level * 0.5)))
+end
+
+function drawUpgradeOption(name, upgrade, y, effect, currentEffect)
+    local text = string.format("%s (Level %d/%d)\nCost: $%d %s\n%s", 
+        name, upgrade.level, upgrade.maxLevel, upgrade.cost, effect, currentEffect)
+    love.graphics.printf(text, 0, y, screenWidth, "center")
+end
+
+function love.mousepressed(x, y, button)
+    if gameState == GameState.UPGRADE_MENU and button == 1 then
+        handleUpgradeClick(x, y)
     end
 end
 
--- Saving and loading data
-function saveGameData()
-    local gameData = {
-        ball = { x = ball.x, y = ball.y, speedX = ball.speedX, speedY = ball.speedY },
-        leftPaw = leftPaw,
-        rightPaw = rightPaw,
-        upgrades = upgrades,
-        score = score,
-        bestScore = bestScore,
-        money = money
-    }
-    local gameDataJSON = json.encode(gameData)
-    love.filesystem.write("gameData.json", gameDataJSON)
+function handleUpgradeClick(x, y)
+    local startY = 100
+    
+    if y >= startY + 100 and y < startY + 140 then
+        purchaseUpgrade("goldenChance")
+    elseif y >= startY + 160 and y < startY + 200 then
+        purchaseUpgrade("ballSpeed")
+    elseif y >= startY + 220 and y < startY + 260 then
+        purchaseUpgrade("pawSpeed")
+    elseif y >= startY + 280 and y < startY + 320 then
+        purchaseUpgrade("moneyMultiplier")
+    end
 end
 
-function loadGameData()
-    if love.filesystem.exists("gameData.json") then
-        local gameDataJSON = love.filesystem.read("gameData.json")
-        local gameData = json.decode(gameDataJSON)
-        if gameData then
-            ball = gameData.ball or ball
-            leftPaw = gameData.leftPaw or leftPaw
-            rightPaw = gameData.rightPaw or rightPaw
-            upgrades = gameData.upgrades or upgrades
-            score = gameData.score or score
-            bestScore = gameData.bestScore or bestScore
-            money = gameData.money or money
+function purchaseUpgrade(type)
+    local upgrade = upgrades[type]
+    if upgrade.level < upgrade.maxLevel and money >= upgrade.cost then
+        money = money - upgrade.cost
+        upgrade.level = upgrade.level + 1
+        upgrade.cost = upgrade.cost + upgrade.increment
+        saveMoney(money)
+        saveUpgrades(upgrades)
+    end
+end
+
+function saveUpgrades(upgrades)
+    local path = love.filesystem.getAppdataDirectory() .. "/CatGame/upgrades.txt"
+    love.filesystem.createDirectory("CatGame")
+    local serialized = ""
+    for name, upgrade in pairs(upgrades) do
+        serialized = serialized .. string.format("%s:%d:%d:%d:%d\n", 
+            name, upgrade.level, upgrade.cost, upgrade.maxLevel, upgrade.increment)
+    end
+    love.filesystem.write(path, serialized)
+end
+
+function loadUpgrades()
+    local path = love.filesystem.getAppdataDirectory() .. "/CatGame/upgrades.txt"
+    if love.filesystem.getInfo(path) then
+        local content = love.filesystem.read(path)
+        local upgrades = {}
+        for line in content:gmatch("[^\r\n]+") do
+            local name, level, cost, maxLevel, increment = line:match("([^:]+):([^:]+):([^:]+):([^:]+):([^:]+)")
+            upgrades[name] = {
+                level = tonumber(level),
+                cost = tonumber(cost),
+                maxLevel = tonumber(maxLevel),
+                increment = tonumber(increment)
+            }
         end
+        return upgrades
     end
+    return nil
+end
+
+function saveMoney(money)
+    local path = love.filesystem.getAppdataDirectory() .. "/CatGame/money.txt"
+    love.filesystem.createDirectory("CatGame")
+    love.filesystem.write(path, tostring(money))
+end
+
+function loadMoney()
+    local path = love.filesystem.getAppdataDirectory() .. "/CatGame/money.txt"
+    if love.filesystem.getInfo(path) then
+        local file = love.filesystem.read(path)
+        return tonumber(file) or 0
+    end
+    return 0
+end
+
+function loadBestScore()
+    local path = love.filesystem.getAppdataDirectory() .. "/CatGame/best_score.txt"
+    if love.filesystem.getInfo(path) then
+        local file = love.filesystem.read(path)
+        return tonumber(file) or 0
+    end
+    return 0
+end
+
+function saveBestScore(score)
+    local path = love.filesystem.getAppdataDirectory() .. "/CatGame/best_score.txt"
+    love.filesystem.createDirectory("CatGame")
+    love.filesystem.write(path, tostring(score))
+end
+
+function checkCollision(ball, paw)
+    local ballLeft = ball.x - ball.radius
+    local ballRight = ball.x + ball.radius
+    local ballTop = ball.y - ball.radius
+    local ballBottom = ball.y + ball.radius
+
+    local pawLeft = paw.x
+    local pawRight = paw.x + paw.width
+    local pawTop = paw.y
+    local pawBottom = paw.y + paw.height
+
+    return ballRight > pawLeft and ballLeft < pawRight and
+           ballBottom > pawTop and ballTop < pawBottom
 end

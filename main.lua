@@ -33,7 +33,7 @@ function love.load()
     -- Golden ball tracking
     isGolden = false
     goldenTimer = 0
-    goldenDuration = 3 -- seconds
+    goldenDuration = 10 -- seconds
     goldenChance = 0.2 -- 20% chance to turn golden after a bounce
 end
 
@@ -102,9 +102,9 @@ function love.update(dt)
 
     -- Ball falls off the screen (Game Over)
     if ball.y > love.graphics.getHeight() then
-        -- Game over, reset the game
-        saveBestScore(bestScore) -- Save best score
-        love.load() -- Restart game
+        -- Game over, save the current best score and restart the game
+        saveBestScore(bestScore) -- Save the best score before restarting
+        love.load() -- Restart game (reset the score and ball)
     end
 end
 
@@ -163,5 +163,5 @@ end
 function saveBestScore(score)
     local path = love.filesystem.getAppdataDirectory() .. "/CatGame/best_score.txt"
     love.filesystem.createDirectory("CatGame") -- Ensure the directory exists
-    love.filesystem.write(path, tostring(score))
+    love.filesystem.write(path, tostring(score)) -- Always save the best score
 end
